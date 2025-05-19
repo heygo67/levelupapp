@@ -70,10 +70,23 @@ get '/' do
           }
           h1 { font-size: 1.5em; }
           pre { background: #f4f4f4; padding: 1em; }
+          .note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 10px;
+            margin-bottom: 20px;
+            color: #856404;
+            border-radius: 5px;
+          }
         </style>
       </head>
       <body>
         <h1>Student Level-Up Checker</h1>
+
+        <div class="note">
+          <strong>Note:</strong> If the page takes a few seconds to load, it’s just waking up — give it a moment!
+        </div>
+
         <p><strong>How to use:</strong></p>
         <ul>
           <li>In Radius, download the enrollment report, with the date set to today</li>
@@ -89,6 +102,7 @@ get '/' do
     </html>
   HTML
 end
+
 
 post '/upload' do
   if params[:file]
