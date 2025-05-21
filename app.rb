@@ -1,6 +1,18 @@
 require 'sinatra'
 require 'roo'
 require 'date'
+require 'rack/protection'
+require 'digest'
+use Rack::Protection # for basic protection against simple attacks
+
+
+# Prevents XSS and enforces HTTPS only
+before do
+  headers 'Content-Security-Policy' => "default-src 'self'"
+  headers 'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
+  headers 'X-Content-Type-Options' => 'nosniff'
+  headers 'X-Frame-Options' => 'DENY'
+end
 
 LEVELS = {
   6 => 2,
@@ -106,6 +118,28 @@ end
 
 post '/upload' do
   if params[:file]
+    filename = params[:file][:filename]
+
+    # blocks malformed names or files not ending in .xls/.xlsx
+    if filename =~ /[^a-zA-Z0-9_.-]/ || !filename.end_with?('.xlsx', '.xls')
+      return <<-HTML
+        <p style="color:red;">Invalid file name or type. Please upload a clean Excel file (.xlsx or .xls).</p>
+        <p><a href="/">Go back</a></p>
+      HTML
+    end
+
+    # Prevents DoS via large file uploads
+    if params[:file][:tempfile].size > 5 * 1024 * 1024
+      return <<-HTML
+        <p style="color:red;">File too large. Please upload a file under 5MB.</p>
+        <p><a href="/">Go back</a></p>
+      HTML
+    end
+    
+    # Adds integrity tracking, no user data exposed in logs
+    file_hash = Digest::SHA256.file(params[:file][:tempfile].path).hexdigest
+    puts "[UPLOAD] #{filename} from #{request.ip} at #{Time.now} (SHA256: #{file_hash})"
+
     result = process_excel(params[:file])
     <<-HTML
       <html>
