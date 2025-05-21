@@ -121,7 +121,7 @@ post '/upload' do
     filename = params[:file][:filename]
 
     # blocks malformed names or files not ending in .xls/.xlsx
-    if filename =~ /[^a-zA-Z0-9_.-]/ || !filename.end_with?('.xlsx', '.xls')
+    if filename =~ /[^a-zA-Z0-9_.\-\s]/ || !filename.end_with?('.xlsx', '.xls')
       return <<-HTML
         <p style="color:red;">Invalid file name or type. Please upload a clean Excel file (.xlsx or .xls).</p>
         <p><a href="/">Go back</a></p>
