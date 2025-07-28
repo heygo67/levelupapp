@@ -33,6 +33,17 @@ def months_since(start_date, end_date = Date.today)
   total_months
 end
 
+def determine_current_level(months)
+  return nil if months.nil?
+  case months
+  when 0...6 then 1
+  when 6...12 then 2
+  when 12...18 then 3
+  when 18...24 then 4
+  else 5
+  end
+end
+
 def process_excel(file)
   xlsx = Roo::Spreadsheet.open(file[:tempfile].path)
   sheet = xlsx.sheet(0)
@@ -67,6 +78,38 @@ def process_excel(file)
     "#{name} levels up to level #{LEVELS[months]}"
   end.compact
 end
+
+def all_students_levels(file)
+  xlsx = Roo::Spreadsheet.open(file[:tempfile].path)
+  sheet = xlsx.sheet(0)
+
+  first_names = sheet.column(3)[1..]
+  last_names  = sheet.column(4)[1..]
+  start_dates = sheet.column(11)[1..]
+
+  full_names = first_names.zip(last_names).map { |f, l| "#{f} #{l}" }
+
+  months_since_start = start_dates.map do |raw|
+    begin
+      parsed_date =
+        case raw
+        when Date then raw
+        when Float, Integer then Date.new(1899, 12, 30) + raw.to_i
+        when String then raw.strip.empty? ? nil : Date.strptime(raw.strip, '%m/%d/%Y')
+        else nil
+        end
+      parsed_date ? months_since(parsed_date) : nil
+    rescue
+      nil
+    end
+  end
+
+  full_names.zip(months_since_start).map do |name, months|
+    level = determine_current_level(months)
+    "#{name} is currently Level #{level}" if level
+  end.compact
+end
+
 
 get '/' do
   <<-HTML
@@ -140,7 +183,8 @@ get '/' do
 
           <form action="/upload" method="post" enctype="multipart/form-data">
             <input type="file" name="file" required><br>
-            <input type="submit" value="Upload">
+            <input type="submit" name="action" value="calculate new level ups">
+            <input type="submit" name="action" value="show all students current levels">
           </form>
         </div>
       </body>
@@ -173,7 +217,17 @@ post '/upload' do
     file_hash = Digest::SHA256.file(params[:file][:tempfile].path).hexdigest
     puts "[UPLOAD] #{filename} from #{request.ip} at #{Time.now} (SHA256: #{file_hash})"
 
-    result = process_excel(params[:file])
+    action = params[:action]
+
+    result =
+      case action
+      when "calculate new level ups"
+        process_excel(params[:file])
+      when "show all students current levels"
+        all_students_levels(params[:file])
+      else
+        ["Unknown action."]
+      end
     <<-HTML
       <html>
         <head>
