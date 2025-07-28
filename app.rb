@@ -29,7 +29,7 @@ def months_since(start_date, end_date = Date.today)
   days = end_date.day - start_date.day
 
   total_months = years * 12 + months
-  total_months += 1 if days > 0
+  total_months += 1 if days >= 15
   total_months
 end
 
