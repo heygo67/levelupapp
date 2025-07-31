@@ -29,7 +29,10 @@ def months_since(start_date, end_date = Date.today)
   days = end_date.day - start_date.day
 
   total_months = years * 12 + months
-  total_months += 1 if days >= 15
+  if days >= 15
+    total_months += 1
+    days = 0
+  end
   total_months
 end
 
@@ -365,12 +368,10 @@ post '/upload' do
             }
             @media print {
               body * {
-                visibility: hidden;
-              }
-              #print-section, #print-section * {
-                visibility: visible;
+                display: none !important;
               }
               #print-section {
+                display: block !important;
                 position: absolute;
                 top: 0;
                 left: 0;
@@ -386,9 +387,11 @@ post '/upload' do
         </head>
         <body>
           <div class="container">
-            <h2>Level-Up Results</h2>
-            <div id="print-section">
-              <pre>#{result.empty? ? "No students ready to level up." : result.join("\n")}</pre>
+            <div id="print-area">
+              <h2>Level-Up Results</h2>
+              <div id="print-section">
+                <pre>#{result.empty? ? "No students ready to level up." : result.join("\n")}</pre>
+              </div>
             </div>
             <button id="print-btn" onclick="printResults()">Print Results</button>
             <a href="/">← Upload another file</a>
@@ -473,12 +476,10 @@ post '/assessments' do
           }
           @media print {
             body * {
-              visibility: hidden;
-            }
-            #print-section, #print-section * {
-              visibility: visible;
+              display: none !important;
             }
             #print-section {
+              display: block !important;
               position: absolute;
               top: 0;
               left: 0;
@@ -494,9 +495,11 @@ post '/assessments' do
       </head>
       <body>
         <div class="container">
-          <h2>Assessments to Pull</h2>
-          <div id="print-section">
-            <pre>#{results.empty? ? "No assessments to pull forward for this week." : results.join("\n")}</pre>
+          <div id="print-area">
+            <h2>Assessments to Pull</h2>
+            <div id="print-section">
+              <pre>#{result.empty? ? "No assessments to pull." : result.join("\n")}</pre>
+            </div>
           </div>
           <button id="print-btn" onclick="printResults()">Print Results</button>
           <a href="/assessments">← Upload another file</a>
