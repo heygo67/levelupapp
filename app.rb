@@ -8,7 +8,7 @@ use Rack::Protection # for basic protection against simple attacks
 
 # Prevents XSS and enforces HTTPS only
 before do
-  headers 'Content-Security-Policy' => "default-src 'self'"
+  headers 'Content-Security-Policy' => "default-src 'self'; script-src 'self' 'unsafe-inline'"
   headers 'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
   headers 'X-Content-Type-Options' => 'nosniff'
   headers 'X-Frame-Options' => 'DENY'
@@ -42,6 +42,50 @@ def determine_current_level(months)
   when 18...24 then 4
   else 5
   end
+end
+
+def two_months_ago_range(today = Date.today)
+  days_until_saturday = (6 - today.wday) % 7
+  upcoming_saturday = today + days_until_saturday
+
+  begin
+    start_date = upcoming_saturday << 2 
+  rescue ArgumentError
+    start_date = Date.new(upcoming_saturday.year, upcoming_saturday.month - 2, -1)
+  end
+
+  end_date = start_date + 6
+  (start_date..end_date)
+end
+
+
+def assessments_2_months_back(file)
+  xlsx = Roo::Spreadsheet.open(file[:tempfile].path)
+  sheet = xlsx.sheet(0)
+
+  full_names = sheet.column(3)[1..]
+  assessment_dates = sheet.column(12)[1..]
+
+  date_range = two_months_ago_range(Date.today)
+
+  parsed_dates = assessment_dates.map do |raw|
+    begin
+      case raw
+      when Date then raw
+      when Float, Integer then Date.new(1899, 12, 30) + raw.to_i
+      when String then raw.strip.empty? ? nil : Date.strptime(raw.strip, '%m/%d/%Y')
+      else nil
+      end
+    rescue
+      nil
+    end
+  end
+
+  full_names.zip(parsed_dates).map do |name, date|
+    if date && date_range.cover?(date)
+      "#{name}"
+    end
+  end.compact
 end
 
 def process_excel(file)
@@ -178,7 +222,7 @@ get '/' do
           <ul>
             <li>In Radius, download the enrollment report, with the date set to today</li>
             <li>Make sure to include only <em>in-person</em> and <em>currently enrolled</em> students</li>
-            <li>Upload the Excel file below</li>
+            <li>Upload the Excel file below (if the enrollment report is not what is uploaded, you will receive strange/incorrect results)</li>
           </ul>
 
           <form action="/upload" method="post" enctype="multipart/form-data">
@@ -186,13 +230,50 @@ get '/' do
             <input type="submit" name="action" value="calculate new level ups">
             <input type="submit" name="action" value="show all students current levels">
           </form>
+          <a href="/assessments">Check Assessments</a>
         </div>
       </body>
     </html>
   HTML
 end
 
-
+get '/assessments' do
+  <<-HTML
+  <html>
+    <head>
+      <title>Upload Assessment File</title>
+      <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f5f7fa; padding: 2em; }
+        .container {
+          background: white; padding: 2em; max-width: 650px; margin: auto;
+          box-shadow: 0 0 10px rgba(0,0,0,0.1); border-radius: 12px;
+        }
+        h1 { text-align: center; color: #2c3e50; }
+        input[type="file"], input[type="submit"] {
+          display: block; margin: 1em auto; padding: 10px;
+        }
+        a { text-align: center; display: block; margin-top: 2em; color: #3498db; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Upload Assessment File</h1>
+          <p><strong>How to use:</strong></p>
+          <ul>
+            <li>In Radius, under reports, press <em>Students</em> and download report</li>
+            <li>Make sure to include only <em>in-person</em> and <em>currently enrolled</em> students</li>
+            <li>Upload the Excel file below (if the student report is not what is uploaded, you will receive strange/incorrect results)</li>
+          </ul>
+        <form action="/assessments" method="post" enctype="multipart/form-data">
+          <input type="file" name="file" required>
+          <input type="submit" value="Check Assessments to Pull Forward">
+        </form>
+        <a href="/">← Go back to main level checker</a>
+      </div>
+    </body>
+  </html>
+  HTML
+end
 
 post '/upload' do
   if params[:file]
@@ -228,10 +309,10 @@ post '/upload' do
       else
         ["Unknown action."]
       end
-    <<-HTML
+      <<-HTML
       <html>
         <head>
-          <title>Results</title>
+          <title>Level-Up Results</title>
           <style>
             body {
               font-family: 'Segoe UI', sans-serif;
@@ -265,23 +346,169 @@ post '/upload' do
               text-decoration: none;
               color: #3498db;
               font-weight: bold;
+              text-align: center;
             }
             a:hover {
               color: #1e70b8;
             }
+            button#print-btn {
+              margin-top: 1em;
+              padding: 10px 15px;
+              background-color: #2c3e50;
+              color: white;
+              border: none;
+              border-radius: 5px;
+              cursor: pointer;
+              display: block;
+              margin-left: auto;
+              margin-right: auto;
+            }
+            @media print {
+              body * {
+                visibility: hidden;
+              }
+              #print-section, #print-section * {
+                visibility: visible;
+              }
+              #print-section {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+              }
+            }
           </style>
+          <script>
+            function printResults() {
+              window.print();
+            }
+          </script>
         </head>
         <body>
           <div class="container">
             <h2>Level-Up Results</h2>
-            <pre>#{result.empty? ? "No students ready to level up." : result.join("\n")}</pre>
+            <div id="print-section">
+              <pre>#{result.empty? ? "No students ready to level up." : result.join("\n")}</pre>
+            </div>
+            <button id="print-btn" onclick="printResults()">Print Results</button>
             <a href="/">← Upload another file</a>
           </div>
         </body>
       </html>
-    HTML
+      HTML
   else
     "No file selected. <a href='/'>Try again</a>"
   end
 end
+
+post '/assessments' do
+  if params[:file]
+    filename = params[:file][:filename]
+
+    if filename =~ /[^a-zA-Z0-9_.\-\s]/ || !filename.end_with?('.xlsx', '.xls')
+      return "<p style='color:red;'>Invalid file type.</p><a href='/assessments'>Go back</a>"
+    end
+
+    if params[:file][:tempfile].size > 5 * 1024 * 1024
+      return "<p style='color:red;'>File too large.</p><a href='/assessments'>Go back</a>"
+    end
+
+    file_hash = Digest::SHA256.file(params[:file][:tempfile].path).hexdigest
+    puts "[ASSESSMENT UPLOAD] #{filename} from #{request.ip} at #{Time.now} (SHA256: #{file_hash})"
+
+    results = assessments_2_months_back(params[:file])
+
+    <<-HTML
+    <html>
+      <head>
+        <title>Assessment Results</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #f5f7fa;
+            padding: 2em;
+          }
+          .container {
+            background: white;
+            padding: 2em;
+            max-width: 650px;
+            margin: auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            border-radius: 12px;
+          }
+          h2 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 1em;
+          }
+          pre {
+            background: #f4f4f4;
+            padding: 1em;
+            white-space: pre-wrap;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+          }
+          a {
+            display: block;
+            margin-top: 1.5em;
+            text-align: center;
+            color: #3498db;
+            font-weight: bold;
+            text-decoration: none;
+          }
+          a:hover {
+            color: #1e70b8;
+          }
+          button#print-btn {
+            margin-top: 1em;
+            padding: 10px 15px;
+            background-color: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+          }
+          @media print {
+            body * {
+              visibility: hidden;
+            }
+            #print-section, #print-section * {
+              visibility: visible;
+            }
+            #print-section {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+            }
+          }
+        </style>
+        <script>
+          function printResults() {
+            window.print();
+          }
+        </script>
+      </head>
+      <body>
+        <div class="container">
+          <h2>Assessments to Pull</h2>
+          <div id="print-section">
+            <pre>#{results.empty? ? "No assessments to pull forward for this week." : results.join("\n")}</pre>
+          </div>
+          <button id="print-btn" onclick="printResults()">Print Results</button>
+          <a href="/assessments">← Upload another file</a>
+        </div>
+      </body>
+    </html>
+    HTML
+
+
+  else
+    "No file selected. <a href='/assessments'>Try again</a>"
+  end
+end
+
 
